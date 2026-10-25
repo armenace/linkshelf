@@ -7,8 +7,8 @@
    Use the PUBLISHABLE key (starts with sb_publishable_) or the legacy "anon" key.
    Both are safe in public code: the database rules in schema.sql protect the data.
    NEVER paste a "secret" or "service_role" key here. */
-const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
-const SUPABASE_KEY = "PASTE-YOUR-PUBLISHABLE-KEY";
+const SUPABASE_URL = "https://xfqknzlbrodjgdfsttbc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_6DnsKOlJI24iYEBpQ199DA_HLy7RvPm";
 
 /* ---------- 2. Connection ---------- */
 const isConfigured = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_KEY.startsWith("PASTE");
