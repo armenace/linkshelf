@@ -1,0 +1,105 @@
+/* =====================================================================
+   Linkshelf: the look of a public link page and its 5 themes.
+   Shared by the live preview (index.html) and the real page (page.html).
+   ===================================================================== */
+
+.shelf {
+  --bg: #2B3BFF; --fg: #FFFFFF; --muted: #DCE0FF;
+  --btn-bg: #FF7AC6; --btn-fg: #16163A; --btn-border: #FF7AC6;
+  --avatar-bg: #FF7AC6; --avatar-fg: #16163A;
+  --radius: 999px; --shadow: none;
+  --name-font: "Bricolage Grotesque", system-ui, sans-serif;
+  --name-weight: 800; --name-wdth: 75;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Bricolage Grotesque", system-ui, sans-serif;
+  min-height: 100%;
+  display: flex; justify-content: center;
+  padding: 56px 20px 32px;
+}
+.shelf-inner { width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.shelf-avatar {
+  width: 88px; height: 88px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--avatar-bg); color: var(--avatar-fg);
+  font-weight: 800; font-size: 2rem; font-variation-settings: "wdth" 80;
+  margin-bottom: 18px;
+}
+.shelf-name {
+  margin: 0;
+  font-family: var(--name-font);
+  font-weight: var(--name-weight);
+  font-variation-settings: "wdth" var(--name-wdth);
+  font-size: clamp(2.2rem, 9vw, 3.2rem);
+  line-height: .95;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.shelf-handle { margin: 8px 0 0; font-weight: 600; color: var(--muted); }
+.shelf-bio { margin: 14px 0 0; max-width: 34ch; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.shelf-links { list-style: none; margin: 32px 0 0; padding: 0; width: 100%; display: grid; gap: 14px; }
+.shelf-link {
+  display: block;
+  padding: 1em 1.25em;
+  background: var(--btn-bg); color: var(--btn-fg);
+  border: 2px solid var(--btn-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-weight: 700; font-size: 1.05rem;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: transform .15s ease;
+}
+.shelf-link:hover { transform: translateY(-2px); }
+.shelf-link:active { transform: translateY(0); }
+.shelf-link:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+.shelf-empty { margin: 32px 0 0; color: var(--muted); }
+.shelf-foot { margin: 48px 0 0; font-size: .9rem; }
+.shelf-foot a { color: var(--muted); }
+
+/* ----- Themes ----- */
+.theme-paper {
+  --bg: #FFFFFF; --fg: #16163A; --muted: #5A5A7A;
+  --btn-bg: #FFFFFF; --btn-fg: #16163A; --btn-border: #16163A;
+  --avatar-bg: #16163A; --avatar-fg: #FFFFFF;
+  --radius: 4px;
+  --name-font: "Fraunces", Georgia, serif; --name-weight: 600; --name-wdth: 100;
+}
+.theme-paper .shelf-name { letter-spacing: -0.01em; font-style: italic; }
+.theme-paper .shelf-link { font-weight: 600; }
+.theme-paper .shelf-link:hover { background: #16163A; color: #FFFFFF; }
+
+.theme-night {
+  --bg: #16163A; --fg: #FF7AC6; --muted: #C9C9E6;
+  --btn-bg: transparent; --btn-fg: #FF7AC6; --btn-border: #FF7AC6;
+  --avatar-bg: #FF7AC6; --avatar-fg: #16163A;
+}
+.theme-night .shelf-link:hover { background: #FF7AC6; color: #16163A; }
+
+.theme-lemon {
+  --bg: #FFE14D; --fg: #16163A; --muted: #3D3D5C;
+  --btn-bg: #16163A; --btn-fg: #FFFFFF; --btn-border: #16163A;
+  --avatar-bg: #16163A; --avatar-fg: #FFE14D;
+  --radius: 14px; --shadow: 6px 6px 0 #FFFFFF;
+  --name-wdth: 80;
+}
+.theme-lemon .shelf-links li:nth-child(odd) .shelf-link { transform: rotate(-1.2deg); }
+.theme-lemon .shelf-links li:nth-child(even) .shelf-link { transform: rotate(1.2deg); }
+.theme-lemon .shelf-links .shelf-link:hover { transform: rotate(0) translateY(-2px); }
+
+.theme-mint {
+  --bg: #C9F2E1; --fg: #0F3D2E; --muted: #2F5E4E;
+  --btn-bg: #FFFFFF; --btn-fg: #0F3D2E; --btn-border: #FFFFFF;
+  --avatar-bg: #0F3D2E; --avatar-fg: #C9F2E1;
+  --radius: 22px; --shadow: 0 2px 0 #9FD9C1;
+  --name-weight: 700; --name-wdth: 100;
+}
+
+/* Preview inside the editor's phone frame: a bit smaller */
+.shelf.is-preview { padding: 40px 16px 24px; }
+.shelf.is-preview .shelf-name { font-size: 2.2rem; }
+.shelf.is-preview .shelf-avatar { width: 72px; height: 72px; font-size: 1.6rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf-link { transition: none; }
+}
