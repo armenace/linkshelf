@@ -143,7 +143,14 @@ security definer
 set search_path = ''
 as $$
 declare
-  ip text := split_part(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ',', 1);
+  headers json := current_setting('request.headers', true)::json;
+  -- Who is clicking: the address Cloudflare (in front of Supabase) puts on the request.
+  -- Callers can't set that header themselves. Otherwise use the LAST X-Forwarded-For entry,
+  -- which Supabase's proxy adds; the first entries are whatever the caller sent, so they're ignored.
+  ip text := coalesce(
+    nullif(trim(headers ->> 'cf-connecting-ip'), ''),
+    nullif(trim(regexp_replace(coalesce(headers ->> 'x-forwarded-for', ''), '^.*,', '')), '')
+  );
   added integer;
 begin
   if not exists (select 1 from public.links l where l.id = increment_click.link_id) then
