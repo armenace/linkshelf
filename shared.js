@@ -97,7 +97,12 @@ function renderShelf(target, profile, links, { preview = false } = {}) {
         ? list
         : el("p", { class: "shelf-empty", text: preview ? "Your links will show up here." : "No links yet." }),
       el("p", { class: "shelf-foot" },
-        el("a", { href: new URL("index.html", location.href).href, tabindex: preview ? "-1" : null, text: "Make your own on Linkshelf" }))
+        el("a", {
+          href: new URL("index.html", location.href).href,
+          tabindex: preview ? "-1" : null,
+          onclick: preview ? e => e.preventDefault() : null,   // in the editor's preview, don't leave the page
+          text: "Make your own on Linkshelf"
+        }))
     )
   );
 }

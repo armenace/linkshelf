@@ -41,6 +41,10 @@ button, input, textarea { font: inherit; color: inherit; }
 .btn-primary:hover { background: #2A2A5A; }
 .btn[disabled] { opacity: .6; cursor: progress; }
 .btn-small { padding: .35em .85em; font-size: .9rem; border-width: 1.5px; }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: #FBE7EC; }
+.link-btn { border: 0; background: none; padding: 0; margin-top: 8px; color: var(--cobalt); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.danger-zone { border-color: #F0C4CF; }
 .icon-btn {
   width: 36px; height: 36px; display: inline-grid; place-items: center;
   border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); cursor: pointer;
@@ -194,7 +198,8 @@ code { background: #ECEBF8; padding: .1em .35em; border-radius: 6px; font-size: 
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Pinned version + integrity hash: the browser refuses the file if the CDN ever serves anything else. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
 <script src="shared.js"></script>
 </head>
 <body>
@@ -256,11 +261,29 @@ code { background: #ECEBF8; padding: .1em .35em; border-radius: 6px; font-size: 
         <label for="auth-pass">Password</label>
         <input class="input" id="auth-pass" type="password" autocomplete="new-password" required minlength="8" aria-describedby="auth-pass-help">
         <p class="help" id="auth-pass-help">At least 8 characters.</p>
+        <button class="link-btn" type="button" id="forgot" hidden>Forgot password?</button>
       </div>
       <button class="btn btn-primary wide" type="submit" id="auth-submit">Create account</button>
       <p class="form-status" id="auth-status" role="status" aria-live="polite"></p>
     </form>
   </section>
+</main>
+
+<!-- ============ Came back from a "reset password" email ============ -->
+<main class="narrow" id="view-reset" hidden>
+  <div class="card">
+    <h1>Choose a new password</h1>
+    <p>You're signed in from the reset link. Pick a new password to finish.</p>
+    <form id="reset-form" novalidate>
+      <div class="field">
+        <label for="reset-pass">New password</label>
+        <input class="input" id="reset-pass" type="password" autocomplete="new-password" required minlength="8" aria-describedby="reset-pass-help">
+        <p class="help" id="reset-pass-help">At least 8 characters.</p>
+      </div>
+      <button class="btn btn-primary wide" type="submit" id="reset-submit">Save new password</button>
+      <p class="form-status" id="reset-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
 </main>
 
 <!-- ============ Signed in, no page yet: claim a username ============ -->
@@ -307,7 +330,7 @@ code { background: #ECEBF8; padding: .1em .35em; border-radius: 6px; font-size: 
           <div class="field">
             <label for="p-username">Username</label>
             <div class="prefix-input"><span aria-hidden="true">@</span><input class="input" id="p-username" maxlength="24" spellcheck="false" autocapitalize="none" aria-describedby="p-username-help"></div>
-            <p class="help" id="p-username-help">Changing it changes your page link.</p>
+            <p class="help" id="p-username-help">Changing it changes your page link. Your old link keeps working and sends people to the new one.</p>
           </div>
         </div>
         <div class="field">
@@ -342,6 +365,12 @@ code { background: #ECEBF8; padding: .1em .35em; border-radius: 6px; font-size: 
         <button class="btn btn-primary" type="submit" id="add-submit">Add link</button>
       </form>
     </section>
+
+    <section class="panel danger-zone" aria-labelledby="danger-title">
+      <h2 id="danger-title">Delete account</h2>
+      <p class="help">Removes your login, your page and all your links for good. Your username becomes free for anyone.</p>
+      <button class="btn btn-danger" type="button" id="delete-account">Delete my account</button>
+    </section>
   </div>
 
   <aside class="preview-col" aria-label="Live preview">
@@ -360,12 +389,15 @@ let user = null;      // the signed-in Supabase user
 let profile = null;   // their row in "profiles"
 let links = [];       // their rows in "links", in order
 let authMode = "signup";
+let recovering = /type=recovery/.test(location.hash);   // arrived from a "reset password" email
 
 const $ = id => document.getElementById(id);
-const views = ["boot", "setup", "auth", "claim", "editor"];
+const views = ["boot", "setup", "auth", "reset", "claim", "editor"];
 function show(view) {
+  if (recovering && (view === "claim" || view === "editor")) view = "reset";   // finish the reset first
   views.forEach(v => $("view-" + v).hidden = v !== view);
   $("topbar-actions").hidden = !(view === "claim" || view === "editor");
+  if (view === "reset") $("reset-pass").focus();
 }
 
 let toastTimer;
@@ -404,19 +436,49 @@ function explain(error) {
   return error?.message || "Something went wrong. Try again.";
 }
 
+// Names nobody can claim (must match the list in schema.sql, which is what really enforces it).
+const RESERVED = new Set(["admin", "administrator", "root", "support", "help", "linkshelf", "official", "staff",
+  "moderator", "mod", "security", "abuse", "team", "system", "api", "www", "mail",
+  "login", "signin", "signup", "settings", "account", "about", "terms", "privacy", "null", "undefined"]);
 const validUsername = v => /^[a-z0-9_]{3,24}$/.test(v);
 const usernameHint = "Use 3–24 lowercase letters, numbers or _";
+function usernameProblem(v) {
+  if (!validUsername(v)) return usernameHint;
+  if (RESERVED.has(v)) return "That name is reserved. Pick another one.";
+  return "";
+}
 
 /* =====================================================================
    Start up
    ===================================================================== */
 async function boot() {
   if (!isConfigured) return show("setup");
+  let booted = false;
+  // Listen before anything else, so the "came from a reset email" event can't be missed.
+  db.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY") {
+      recovering = true;
+      user = session?.user || null;
+      if (booted) show("reset");
+      return;
+    }
+    if (booted && (session?.user?.id || null) !== (user?.id || null)) onSession(session);
+  });
+
+  // An expired or already-used email link comes back with an error in the address.
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const linkError = hash.get("error_description");
+  if (linkError) history.replaceState(null, "", location.pathname + location.search);
+
   const { data } = await db.auth.getSession();
   await onSession(data.session);
-  db.auth.onAuthStateChange((_event, session) => {
-    if ((session?.user?.id || null) !== (user?.id || null)) onSession(session);
-  });
+  booted = true;
+  if (linkError && !user) {
+    $("auth-status").className = "form-status bad";
+    $("auth-status").textContent = /expired|invalid/i.test(linkError)
+      ? "That email link has expired or was already used. Ask for a new one."
+      : linkError;
+  }
 }
 
 async function onSession(session) {
@@ -437,7 +499,7 @@ async function onSession(session) {
 }
 
 async function loadLinks() {
-  const { data, error } = await db.from("links").select("id, title, url, position, clicks").eq("user_id", user.id).order("position");
+  const { data, error } = await db.from("links").select("id, title, url, position, clicks").eq("user_id", user.id).order("position").order("created_at");
   if (error) toast(explain(error), true);
   links = data || [];
 }
@@ -452,10 +514,42 @@ function setAuthMode(mode) {
   $("auth-submit").textContent = mode === "signup" ? "Create account" : "Sign in";
   $("auth-pass").autocomplete = mode === "signup" ? "new-password" : "current-password";
   $("auth-pass-help").hidden = mode !== "signup";
+  $("forgot").hidden = mode !== "signin";
   $("auth-status").textContent = "";
 }
 $("tab-signup").addEventListener("click", () => setAuthMode("signup"));
 $("tab-signin").addEventListener("click", () => setAuthMode("signin"));
+
+$("forgot").addEventListener("click", async () => {
+  const email = $("auth-email").value.trim();
+  const status = $("auth-status");
+  status.className = "form-status"; status.textContent = "";
+  fieldError($("auth-pass"), "");
+  if (!fieldError($("auth-email"), /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "" : "Enter your email first, then click Forgot password.")) return $("auth-email").focus();
+  const btn = $("forgot"); btn.disabled = true;
+  const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.href.split(/[?#]/)[0] });
+  btn.disabled = false;
+  if (error) { status.className = "form-status bad"; status.textContent = explain(error); return; }
+  status.className = "form-status ok";
+  status.textContent = "If there's an account for " + email + ", we've sent it a link to reset the password.";
+});
+
+$("reset-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const password = $("reset-pass").value;
+  const status = $("reset-status");
+  if (!fieldError($("reset-pass"), password.trim().length >= 8 ? "" : "Use at least 8 characters.")) return $("reset-pass").focus();
+  const btn = $("reset-submit"); btn.disabled = true; btn.textContent = "Saving…";
+  const { error } = await db.auth.updateUser({ password });
+  btn.disabled = false; btn.textContent = "Save new password";
+  if (error) { status.className = "form-status bad"; status.textContent = explain(error); return; }
+  recovering = false;
+  $("reset-pass").value = "";
+  history.replaceState(null, "", location.pathname + location.search);
+  const { data } = await db.auth.getSession();
+  await onSession(data.session);
+  toast("Password changed");
+});
 
 $("auth-form").addEventListener("submit", async e => {
   e.preventDefault();
@@ -464,7 +558,7 @@ $("auth-form").addEventListener("submit", async e => {
   const status = $("auth-status");
   status.className = "form-status"; status.textContent = "";
   const okEmail = fieldError($("auth-email"), /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "" : "Enter an email like name@example.com.");
-  const okPass = fieldError($("auth-pass"), password.length >= 8 ? "" : "Use at least 8 characters.");
+  const okPass = fieldError($("auth-pass"), password.trim().length >= 8 ? "" : "Use at least 8 characters.");
   if (!okEmail) return $("auth-email").focus();
   if (!okPass) return $("auth-pass").focus();
 
@@ -499,6 +593,7 @@ $("auth-form").addEventListener("submit", async e => {
 });
 
 $("signout").addEventListener("click", async () => {
+  if (hasUnsavedChanges() && !confirm("You have changes that aren't saved. Sign out anyway?")) return;
   await db.auth.signOut();
   onSession(null);
 });
@@ -508,20 +603,20 @@ $("signout").addEventListener("click", async () => {
    ===================================================================== */
 $("claim-username").addEventListener("input", e => {
   e.target.value = e.target.value.toLowerCase().replace(/\s/g, "_");
-  if (e.target.getAttribute("aria-invalid")) fieldError(e.target, validUsername(e.target.value) ? "" : usernameHint);
+  if (e.target.getAttribute("aria-invalid")) fieldError(e.target, usernameProblem(e.target.value));
 });
 
 $("claim-form").addEventListener("submit", async e => {
   e.preventDefault();
   const username = $("claim-username").value.trim();
-  if (!fieldError($("claim-username"), validUsername(username) ? "" : usernameHint)) return $("claim-username").focus();
+  if (!fieldError($("claim-username"), usernameProblem(username))) return $("claim-username").focus();
   const btn = $("claim-submit"); btn.disabled = true; btn.textContent = "Creating…";
   const { data, error } = await db.from("profiles")
     .insert({ id: user.id, username, display_name: $("claim-name").value.trim() })
     .select().single();
   btn.disabled = false; btn.textContent = "Create my page";
   if (error) {
-    if (error.code === "23505") { fieldError($("claim-username"), explain(error)); return $("claim-username").focus(); }
+    if (error.code === "23505" || error.code === "23514") { fieldError($("claim-username"), error.code === "23514" ? "That name is reserved. Pick another one." : explain(error)); return $("claim-username").focus(); }
     $("claim-status").className = "form-status bad"; $("claim-status").textContent = explain(error); return;
   }
   profile = data; links = [];
@@ -582,20 +677,20 @@ $("copy-link").addEventListener("click", async () => {
 $("profile-form").addEventListener("submit", async e => {
   e.preventDefault();
   const username = $("p-username").value.trim();
-  if (!fieldError($("p-username"), validUsername(username) ? "" : usernameHint)) return $("p-username").focus();
+  if (!fieldError($("p-username"), usernameProblem(username))) return $("p-username").focus();
   const btn = $("profile-save"); btn.disabled = true; btn.textContent = "Saving…";
   const { data, error } = await db.from("profiles")
     .update({ display_name: $("p-name").value.trim(), username, bio: $("p-bio").value.trim() })
     .eq("id", user.id).select().single();
   btn.disabled = false; btn.textContent = "Save profile";
   if (error) {
-    if (error.code === "23505") { fieldError($("p-username"), explain(error)); return $("p-username").focus(); }
+    if (error.code === "23505" || error.code === "23514") { fieldError($("p-username"), error.code === "23514" ? "That name is reserved. Pick another one." : explain(error)); return $("p-username").focus(); }
     return toast(explain(error), true);
   }
   const moved = data.username !== profile.username;
   profile = data;
   renderShare(); renderPreview();
-  toast(moved ? "Saved. Your page link changed." : "Profile saved");
+  toast(moved ? "Saved. Your page link changed, and the old one now redirects here." : "Profile saved");
 });
 
 /* ----- Theme ----- */
@@ -674,11 +769,14 @@ async function moveLink(i, dir) {
   const j = i + dir;
   if (j < 0 || j >= links.length) return;
   [links[i], links[j]] = [links[j], links[i]];
-  links.forEach((l, k) => l.position = k);
+  // Renumber 0, 1, 2… and save every link whose number changed, not just the two that swapped,
+  // so gaps left by deleted links can't end up as two links sharing a position.
+  const changed = [];
+  links.forEach((l, k) => { if (l.position !== k) { l.position = k; changed.push(l); } });
   renderLinks(); renderPreview();
   const moved = document.querySelectorAll(".link-row")[j]?.querySelector(dir < 0 ? '[aria-label^="Move"][aria-label$="up"]' : '[aria-label$="down"]');
   (moved && !moved.disabled ? moved : document.querySelectorAll(".link-row")[j]?.querySelector(".l-title"))?.focus();
-  const results = await Promise.all([links[i], links[j]].map(l => db.from("links").update({ position: l.position }).eq("id", l.id)));
+  const results = await Promise.all(changed.map(l => db.from("links").update({ position: l.position }).eq("id", l.id)));
   const failed = results.find(r => r.error);
   if (failed) { toast(explain(failed.error), true); await loadLinks(); renderLinks(); renderPreview(); }
 }
@@ -717,6 +815,39 @@ $("add-form").addEventListener("submit", async e => {
 ["new-title", "new-url"].forEach(id => $(id).addEventListener("input", e => {
   if (e.target.getAttribute("aria-invalid")) fieldError(e.target, "");
 }));
+
+/* ----- Unsaved changes ----- */
+function hasUnsavedChanges() {
+  if (!profile || $("view-editor").hidden) return false;
+  const profileEdited =
+    $("p-name").value.trim() !== (profile.display_name || "") ||
+    $("p-username").value.trim() !== profile.username ||
+    $("p-bio").value.trim() !== (profile.bio || "");
+  const linkEdited = links.some(l => {
+    const row = document.querySelector(`[data-id="${l.id}"]`);
+    return row && (row.querySelector(".l-title").value.trim() !== l.title ||
+                   (safeUrl(row.querySelector(".l-url").value) || row.querySelector(".l-url").value) !== l.url);
+  });
+  const addStarted = $("new-title").value.trim() !== "" || $("new-url").value.trim() !== "";
+  return profileEdited || linkEdited || addStarted;
+}
+window.addEventListener("beforeunload", e => {
+  if (hasUnsavedChanges()) { e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ----- Delete account ----- */
+$("delete-account").addEventListener("click", async () => {
+  const typed = prompt(`This deletes your login, your page and all ${links.length} of your links for good.\n\nType your username (${profile.username}) to confirm:`);
+  if (typed === null) return;
+  if (typed.trim().toLowerCase() !== profile.username) return toast("That didn't match your username, so nothing was deleted.", true);
+  const btn = $("delete-account"); btn.disabled = true; btn.textContent = "Deleting…";
+  const { error } = await db.rpc("delete_my_account");
+  btn.disabled = false; btn.textContent = "Delete my account";
+  if (error) return toast(explain(error), true);
+  await db.auth.signOut({ scope: "local" });   // the login no longer exists, so just forget it here
+  onSession(null);
+  toast("Your account was deleted");
+});
 
 boot().catch(err => { console.error(err); show("auth"); toast(explain(err), true); });
 </script>

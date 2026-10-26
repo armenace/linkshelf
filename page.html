@@ -23,7 +23,8 @@
   .state a { color: #2B3BFF; font-weight: 700; }
   .loading { opacity: .6; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Pinned version + integrity hash: the browser refuses the file if the CDN ever serves anything else. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
 <script src="shared.js"></script>
 </head>
 <body>
@@ -50,9 +51,17 @@
   try {
     const { data: profile, error } = await db.from("profiles").select("id, username, display_name, bio, theme").eq("username", username).maybeSingle();
     if (error) throw error;
-    if (!profile) return showState("Page not found", "Nobody has claimed @" + username + " yet. It could be yours.");
+    if (!profile) {
+      // Maybe it's someone's old username: send visitors to their new one.
+      const { data: old } = await db.from("username_history").select("user_id").eq("username", username).maybeSingle();
+      if (old) {
+        const { data: now } = await db.from("profiles").select("username").eq("id", old.user_id).maybeSingle();
+        if (now) return location.replace("page.html?u=" + encodeURIComponent(now.username));
+      }
+      return showState("Page not found", "Nobody has claimed @" + username + " yet. It could be yours.");
+    }
 
-    const { data: links, error: e2 } = await db.from("links").select("id, title, url").eq("user_id", profile.id).order("position");
+    const { data: links, error: e2 } = await db.from("links").select("id, title, url").eq("user_id", profile.id).order("position").order("created_at");
     if (e2) throw e2;
 
     document.title = (profile.display_name || "@" + profile.username) + " | Linkshelf";
